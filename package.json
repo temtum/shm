@@ -1,0 +1,20 @@
+{
+    "name": "shm",
+    "description": "Shared Memory",
+    "version": "0.0.1",
+    "keywords": [],
+    "scripts": {},
+    "gypfile": true,
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/temtum/shm.git"
+    },
+    "dependencies": {
+        "bindings": "^1.5.0",
+        "node-addon-api": "^1.6.3"
+    },
+    "devDependencies": {
+        "jasmine": "^3.2.0"
+    },
+    "main": "./index.js"
+}
