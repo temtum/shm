@@ -1099,49 +1099,14 @@ private:
     return load(*out_idx);
   }
 
-  //bool       runIfMatch(VerIdx vi, const void* const buf, u32 len, u32 hash, FUNC f) const 
-  //Match       runIfMatch(VerIdx vi, const void* const buf, u32 len, u32 hash, FUNC f) const 
-  template<class FUNC, class T>
-  auto       runIfMatch(VerIdx vi, const void* const buf, u32 len, u32 hash, FUNC f, T defaultRet = decltype(f(vi))() ) const -> std::pair<Match, T>   // std::pair<Match, decltype(f(vi))>
-  { 
-    Match m;
-    T funcRet = defaultRet;                                                                   
+  template<class FUNC>
+  bool       runIfMatch(VerIdx vi, const void* const buf, u32 len, u32 hash, FUNC f) const
+  { // todo: should this increment and decrement the readers, as well as doing something different if it was the thread that freed the blocks
+      Match      m = m_csp->compare(vi.idx, vi.version, buf, len, hash);
+      bool matched = false;                                                   // not inside a scope
+      if(m==MATCH_TRUE){ matched=true; f(vi); }
 
-    //auto b = m_csp->incReaders(vi.idx, vi.version);
-    auto b = m_csp->incReaders(vi.idx);
-    SECTION(work on the now protected block list without returning until after the readers are decremented)
-    {
-      if(b.isDeleted){
-        m = MATCH_REMOVED;
-      }else{
-        m = m_csp->compare(vi.idx, vi.version, buf, len, hash);
-        if(m==MATCH_TRUE || m==MATCH_TRUE_WRONG_VERSION){
-          //funcRet = f(vi); 
-          funcRet = f( VerIdx(vi.idx, b.version) );
-        }
-      }
-    }
-    //if( !m_csp->decReadersOrDel(vi.idx, vi.version, false) ){ 
-   if( !m_csp->decReadersOrDel(vi.idx,false) ){ 
-      m = MATCH_REMOVED;
-    }
-
-    return {m, funcRet};
-    
-    // todo: should this increment and decrement the readers, as well as doing something different if it was the thread that freed the blocks
-    //
-    //if(b.isDeleted){ m = MATCH_REMOVED; } 
-    //b.
-    //
-    //bool matched = false;  
-    //decltype(f(vi)) funcRet; // not inside a scope
-    //
-    //matched=true; 
-    //
-    //m_csp->decReaders(vi.idx, vi.version);    
-    //decReaders(i);
-    //
-    //return matched;
+      return matched;
   }
 
 public:
@@ -1169,74 +1134,55 @@ public:
   VerIdx  operator[](u32 idx) const { return s_vis[idx]; }
 
   VerIdx   putHashed(u32 hash, VerIdx lstVi, const void *const key, u32 klen) const
-  {
-    // This function needs to return the VerIdx it was given if there was not a place for the allocation, since it would neighther be stored in the hash map or swapped for another VerIdx that will be freed
-    using namespace std;
-
-    //VerIdx desired = lstVi;
-    u32 i=hash%m_sz, en=prevIdx(i);
-    for(;; i=nxtIdx(i) )
     {
-      VerIdx vi = load(i);
-      if(vi.idx>=DELETED){                                                                  // it is either deleted or empty
-        bool success = cmpex_vi(i, vi, lstVi);           
+      using namespace std;
+      static const VerIdx empty   = empty_vi();
+
+      VerIdx desired = lstVi;
+      u32 i=hash%m_sz, en=prevIdx(i);
+      for(;; i=nxtIdx(i) )
+      {
+        VerIdx vi = load(i);
+        if(vi.idx>=DELETED){                                                                  // it is either deleted or empty
+          bool success = cmpex_vi(i, vi, desired);
+          if(success){
+            return vi;
+          }else{
+            i=prevIdx(i);
+            continue;
+          }                                                                                   // retry the same loop again if a good slot was found but it was changed by another thread between the load and the compare-exchange
+        }                                                                                     // Either we just added the key, or another thread did.
+
+        if(m_csp->compare(vi.idx,vi.version,key,klen,hash) != MATCH_TRUE){
+          if(i==en){return empty;}
+          else{continue;}
+        }
+
+        bool success = cmpex_vi(i, vi, desired);
         if(success){
           return vi;
-        }else{ 
-          i=prevIdx(i); 
-          continue; 
-        }                                                                                   // retry the same loop again if a good slot was found but it was changed by another thread between the load and the compare-exchange
-      }                                                                                     // Either we just added the key, or another thread did.
-
-      VerIdx foundVi = empty_vi();
-      const auto ths = this;
-      auto         f = [ths,i,lstVi,&foundVi](VerIdx vi){
-        foundVi      = vi;
-        bool success = ths->cmpex_vi(i, vi, lstVi);                                            // this should be hit even when the the versions don't match, since m_csp->compare() will return MATCH_TRUE_WRONG_VERSION
-        return success;
-      };
-      auto cmpAndSuccess = runIfMatch(vi, key, klen, hash, f, false);
-      Match          cmp = cmpAndSuccess.first;
-      bool       success = cmpAndSuccess.second;
-
-      if(cmp==MATCH_FALSE){
-        if(i==en){
-          return lstVi;                                                                      // By returning the given VerIdx, we say that there was no place for it found and it needs to be deallocated
-        }else{ continue; }
-      }else if(cmp==MATCH_REMOVED){                                                          // if the block list is marked as deleted, try this index again, since the index must have changed first
-        i=prevIdx(i); 
-        continue;
-      }
-
-      if(success){ 
-        return foundVi;
-        //return vi;
-      }else{ 
-        i=prevIdx(i); 
-        continue; 
+        }else{
+          i=prevIdx(i);
+          continue;
+        }
       }
     }
-  }
 
   template<class FUNC>
-  bool      runMatch(const void *const key, u32 klen, u32 hash, FUNC f)       const 
-  {
-    using namespace std;
-    
-    u32  i = hash % m_sz;
-    u32 en = prevIdx(i);
-    for(;; i=nxtIdx(i) )
+    bool      runMatch(const void *const key, u32 klen, u32 hash, FUNC f)       const
     {
-      VerIdx vi = load(i);
-      if(vi.idx!=EMPTY && vi.idx!=DELETED){
-        Match match = runIfMatch(vi, key, klen, hash, f, 0).first;
+      using namespace std;
 
-        if(match==MATCH_TRUE || match==MATCH_TRUE_WRONG_VERSION){ return true; }
+      u32  i = hash % m_sz;
+      u32 en = prevIdx(i);
+      for(;; i=nxtIdx(i) )
+      {
+        VerIdx vi = load(i);
+        if(vi.idx!=EMPTY && vi.idx!=DELETED && runIfMatch(vi,key,klen,hash,f) ){ return true; }
+
+        if(i==en){ return false; }
       }
-
-      if(i==en){ return false; }
     }
-  }
   
   VerIdx   delHashed(const void *const key, u32 klen, u32 hash)               const
   {  
