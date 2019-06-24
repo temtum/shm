@@ -3,7 +3,6 @@
 
 #include <napi.h>
 #include <uv.h>
-#include "simdb.h"
 
 class Shm : public Napi::ObjectWrap<Shm> {
 
@@ -12,7 +11,6 @@ class Shm : public Napi::ObjectWrap<Shm> {
         Shm(const Napi::CallbackInfo& info);
 
     private:
-        simdb* db = nullptr;
         static Napi::FunctionReference constructor;
         void Open(const Napi::CallbackInfo& info);
         void Close(const Napi::CallbackInfo& info);

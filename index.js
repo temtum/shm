@@ -4,12 +4,7 @@ const { Shm } = require('bindings')('shm');
 
 class SharedMemory {
     constructor(opts) {
-        this.name = opts.name;
-        this.blocks = opts.blocks;
-        this.blockSize = opts.blockSize;
         this.db = new Shm();
-
-        this.init();
     }
 
     set db(db) {
@@ -18,34 +13,6 @@ class SharedMemory {
 
     get db() {
         return this._db;
-    }
-
-    set name(name) {
-        this._name = name;
-    }
-
-    get name() {
-        return this._name
-    }
-
-    set blocks(blocks) {
-        this._blocks = blocks;
-    }
-
-    get blocks() {
-        return this._blocks;
-    }
-
-    set blockSize(blockSize) {
-        this._blockSize = blockSize;
-    }
-
-    get blockSize() {
-        return this._blockSize;
-    }
-
-    init() {
-        this.db.open(this.name, this.blockSize, this.blocks);
     }
 
     close() {
