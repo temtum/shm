@@ -3,7 +3,7 @@
 const { Shm } = require('bindings')('shm');
 
 class SharedMemory {
-    constructor(opts) {
+    constructor() {
         this.db = new Shm();
     }
 
@@ -13,19 +13,6 @@ class SharedMemory {
 
     get db() {
         return this._db;
-    }
-
-    close() {
-        this.db.close();
-    }
-
-    size() {
-        return this.db.size();
-    }
-
-    keys() {
-        return this.db.keys();
-
     }
 
     get(key) {
