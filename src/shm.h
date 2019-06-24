@@ -12,12 +12,9 @@ class Shm : public Napi::ObjectWrap<Shm> {
 
     private:
         static Napi::FunctionReference constructor;
-        void Open(const Napi::CallbackInfo& info);
-        void Close(const Napi::CallbackInfo& info);
+
         void Del(const Napi::CallbackInfo& info);
         void Put(const Napi::CallbackInfo& info);
-        Napi::Value Size(const Napi::CallbackInfo& info);
-        Napi::Value Keys(const Napi::CallbackInfo& info);
         Napi::Value Get(const Napi::CallbackInfo& info);  
 };
 

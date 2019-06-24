@@ -10,10 +10,6 @@ Napi::FunctionReference Shm::constructor;
 Napi::Object Shm::Init(Napi::Env env, Napi::Object exports) {
     Napi::HandleScope scope(env);
     Napi::Function func = DefineClass(env, "Shm", {
-        InstanceMethod("open", &Shm::Open),
-        InstanceMethod("close", &Shm::Close),
-        InstanceMethod("size", &Shm::Size),
-        InstanceMethod("keys", &Shm::Keys),
         InstanceMethod("get", &Shm::Get),
         InstanceMethod("del", &Shm::Del),
         InstanceMethod("put", &Shm::Put)
@@ -28,29 +24,19 @@ Napi::Object Shm::Init(Napi::Env env, Napi::Object exports) {
 
 Shm::Shm(const Napi::CallbackInfo& info) : Napi::ObjectWrap<Shm>(info)  {}
 
-void Shm::Open(const Napi::CallbackInfo& info) {
-
-}
-
-void Shm::Close(const Napi::CallbackInfo& info) {
-}
-
-Napi::Value Shm::Size(const Napi::CallbackInfo& info) {
-    return info.Env().Undefined();
-}
-
-Napi::Value Shm::Keys(const Napi::CallbackInfo& info) {
-    return info.Env().Undefined();
-}
-
 Napi::Value Shm::Get(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
+    uint size = 0;
     char* shared_memory;
     char* val = nullptr;
     std::string key = info[0].As<Napi::String>();
     std::size_t key_hash = std::hash<std::string>{}(key);
-    int segment_id = shmget(key_t(key_hash), (size_t)1024*1024*1024*1+1, IPC_CREAT);
+    int segment_id = shmget(key_t(key_hash), size, IPC_CREAT);
+
+    if (segment_id < 0) {
+        return env.Null();
+    }
 
     shared_memory = (char*) shmat(segment_id, (void*) 0, 0);
     val = strdup(shared_memory);
@@ -60,7 +46,14 @@ Napi::Value Shm::Get(const Napi::CallbackInfo& info) {
 }
 
 void Shm::Del(const Napi::CallbackInfo& info) {
+    uint size = 0;
     std::string key = info[0].As<Napi::String>();
+    std::size_t key_hash = std::hash<std::string>{}(key);
+    int segment_id = shmget(key_hash, size, IPC_CREAT);
+
+    if (segment_id != -1) {
+        shmctl(segment_id, IPC_RMID, 0);
+    }
 }
 
 void Shm::Put(const Napi::CallbackInfo& info) {
@@ -70,11 +63,13 @@ void Shm::Put(const Napi::CallbackInfo& info) {
     std::size_t key_hash = std::hash<std::string>{}(key);
     int segment_id = shmget(
         (key_t)key_hash,
-        (size_t)1024*1024*1024*1+1,
+        val.size(),
         IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP
     );
 
-    shared_memory = (char*) shmat(segment_id, 0, 0);
-    sprintf(shared_memory, "%s", val.c_str());
-    shmdt(shared_memory);
+    if (segment_id != -1) {
+        shared_memory = (char*) shmat(segment_id, 0, 0);
+        sprintf(shared_memory, "%s", val.c_str());
+        shmdt(shared_memory);
+    }
 }
